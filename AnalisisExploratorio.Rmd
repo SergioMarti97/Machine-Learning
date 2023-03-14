@@ -10,3 +10,65 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Análisis Exploratorio
+
+Se parten de cuatro archivos distintos que analizar: datos clínicos, datos del sistema inmunológico, datos del análisis digital del tumor y datos procedentes de cuantificación de RNA-seq. Para cada achivo se debe de responder a las siguientes preguntas:
+
+-   Número de predictores.
+-   Número de muestras.
+-   Tipo de identificador correspondiente al paciente.
+-   Cantidad de pacientes con datos disponibles en las cuatro fuentes de datos.
+
+## Datos clínicos.
+
+Los datos clínicos se encuentra en formato "csv" (coma separeted values) dentro del archivo llamado "Main.csv".
+
+```{r}
+# Lemos los datos clínicos
+dfClinical <- read.csv("./datos/Main.csv")
+
+# Visualizar el dataframe
+View(dfClinical)
+```
+
+El número de muestras se puede obtener contando el número de registros:
+
+```{r}
+# Número de registros
+nrow(dfClinical)
+```
+
+El número de predictores se pude calcular a partir del número de variables del dataframe:
+
+```{r}
+# Número de columnas
+ncol(dfClinical)
+```
+
+A partir de aquí hay que descontar las variables que no son predictores. Las variables "X" y "Trial.ID" son los identificadores de los pacientes. La variable "resp.pCR" determina si la paciente ha respondido de forma satisfactoria al nuevo tratamiento. Las variables: "resp.Chemosensitive", "resp.Chemoresistant", "RCB.score" y "RCB.category" son redundantes con la primera.
+
+```{r}
+summary(dfClinical)
+
+ncol(dfClinical[,7:ncol(dfClinical)])
+```
+
+Hay 68 variables clínicas que se pueden utilizar como predictores.
+
+```{r}
+# Encontrar si hay algún dato "Not Available"
+sum(is.na(dfClinical[,3:ncol(dfClinical)])) > 1
+
+# Encontrar si hay algún dato nulo
+sum(is.null(dfClinical[,3:ncol(dfClinical)])) > 1
+```
+
+No hay ningún registro que sea "Not Available" (NA) o nulo (NULL) en las variables clínicas.
+
+Si hubiera algún dato nulo o not available, dependiendo de la naturaleza de los datos se podrían tomar diferentes estratégias para resolver el problema:
+Se puede decidir que no se van a trabajar con los registros que contienen nulos. Esta opción es buena si se tiene una muestra muy grande de datos, pero se tiene que tener en cuenta que se pierde información al realiar esta selección. Otra opción es asignar el valor promedio de la variable a los registros con datos nulos o not available. Si la variable es de tipo categórica/cualitativa, se puede asignar el valor que más se repite. Si la variable es cuantitativa, se puede asignar el valor estadístico de la media o la moda.
+
+```{r}
+# Naturaleza de las variables
+is.numeric(dfClinical[,8:ncol(dfClinical)])
+```
+
