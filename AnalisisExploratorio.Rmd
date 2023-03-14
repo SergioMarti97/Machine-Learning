@@ -64,11 +64,62 @@ sum(is.null(dfClinical[,3:ncol(dfClinical)])) > 1
 
 No hay ningún registro que sea "Not Available" (NA) o nulo (NULL) en las variables clínicas.
 
-Si hubiera algún dato nulo o not available, dependiendo de la naturaleza de los datos se podrían tomar diferentes estratégias para resolver el problema:
-Se puede decidir que no se van a trabajar con los registros que contienen nulos. Esta opción es buena si se tiene una muestra muy grande de datos, pero se tiene que tener en cuenta que se pierde información al realiar esta selección. Otra opción es asignar el valor promedio de la variable a los registros con datos nulos o not available. Si la variable es de tipo categórica/cualitativa, se puede asignar el valor que más se repite. Si la variable es cuantitativa, se puede asignar el valor estadístico de la media o la moda.
+Si hubiera algún dato nulo o not available, dependiendo de la naturaleza de los datos se podrían tomar diferentes estratégias para resolver el problema: una opción es decidir que no trabajar con los registros que contienen nulos. Es una buena opción si se tiene una muestra muy grande, pero se tiene que tener en cuenta que se pierde información al realiar esta selección. Otra opción es asignar el valor promedio de la variable a los registros con datos nulos o not available. Si la variable es de tipo categórica/cualitativa, se puede asignar el valor que más se repite. Si la variable es cuantitativa, se puede asignar el valor estadístico de la media o la moda.
 
 ```{r}
 # Naturaleza de las variables
-is.numeric(dfClinical[,8:ncol(dfClinical)])
+
+# Seleccionamos solamente las variables que no son predictoras
+dfClinicalVars <- dfClinical[,8:ncol(dfClinical)]
+
+# Comprobamos la naturaleza de las variables
+str(dfClinicalVars)
+
+# Guardamos en un vector boleano si la variable es entera o numerica
+colsInt <- sapply(dfClinicalVars, is.integer)
+
+# Seleccionamos en base al vector las columnas de datos enteros y datos continuos
+intVars <- dfClinicalVars[colsInt]
+numVars <- dfClinicalVars[!colsInt]
+
+# Eliminamos el vector de columnas enteras, ya no es necesario
+rm(colsInt)
+
+# Para cada variable entera, comprobamos si es un factor
+lIsFactor <- lapply(intVars, function(v) {
+  return(levels(as.factor(v)))
+})
+
+# Comprobamos con la variable lIsFactor que hay variables enteras con 2 niveles (factores) y variables con más de 2 niveles. Las variables con 2 niveles son cualitativas y las demás son cuantitativas de números enteros.
+lIsFactor <- sapply(intVars, function(v) {
+  return(!(length(levels(as.factor(v))) > 2)) 
+})
+
+# Seleccionamos las variables que son factores
+facVars <- intVars[lIsFactor] 
+
+numVars <- cbind(numVars, intVars[!lIsFactor])
+
+# Eliminamos las variables enteras, ya no son necesarias
+# rm(intVars)
+
+facVars[,1:ncol(facVars)] <- lapply(facVars[,1:ncol(facVars)], factor)
+summary(facVars)
+```
+
+Obtenemos que hay 54 variables númericas (43 reales y 11 enteras) y 13 variables de tipo factor.
+
+```{r}
+library(corrplot)
+
+mCor <- cor(normalize(numVars))
+
+corrplot(mCor, method = "color", # Correlation plot method
+         order = "hclust",
+         addrect = 5,
+         type = "full",    # Correlation plot style (also "upper" and "lower")
+         diag = TRUE,      # If TRUE (default), adds the diagonal
+         tl.col = "black",
+         tl.cex = 0.4)
 ```
 
