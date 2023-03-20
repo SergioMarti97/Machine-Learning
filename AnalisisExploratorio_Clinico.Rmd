@@ -86,7 +86,7 @@ A cotinuación, se va a proceder a separar las variables cuantitativas de las va
 
 Se ha comprobado mediante la función `str()` y `is.numeric()` que todas las variables del dataframe son númericas (menos la variable "**Trial.ID**" que es el identificador de la paciente). Se utilizará las funciones `is.integer()` para determinar si la variable es un número entero, `as.factor()` para convertir la variable entera a un factor, `levels()` para determinar el número de niveles del factor y `sapply()` para poder aplicar las funciones anteriores a todas las columnas del dataframe.
 
-Se van a utilizar las funciones anteriores para construir un algoritmo que determine si una variable es cuantitativa o categórica. Si una variable entera se transforma a un factor, y tiene dos o tres niveles, se entiende que es una variable categórica. En cambio, si no se cumple esta condición, la variable es cuantitativa de tipo entero; como por ejemplo, la edad de la paciente cuando se diagnostico la enfermedad ("**Age.at.diagnosis**").
+Se van a utilizar las funciones anteriores para construir un algoritmo que determine si una variable es cuantitativa o categórica. Si una variable entera se transforma a un factor, y tiene dos o tres niveles, se entiende que es una variable categórica. En cambio, si no se cumple esta condición, la variable es cuantitativa de tipo entero; como por ejemplo, la edad de la paciente cuando se diagnostico la enfermedad ("**Age.at.diagnosis**"). Este método funciona bien, si no hay ninguna variable numerica que en realidad sea un factor. Si se diera el caso, seria mejor realizar la comprobación mediante la función `unique()`.
 
 ```{r}
 # Comprobamos que todas las variables son numericas
@@ -95,55 +95,70 @@ sum(is.numeric(dfClinical[,3:ncol(dfClinical)])) > 1
 # Seleccionamos solamente las variables que se pueden utilizar como predictores
 dfClinicalVars <- dfClinical[,3:ncol(dfClinical)]
 
-# Guardamos en un vector boleano si la variable es entera o numerica
-colsInt <- sapply(dfClinicalVars, is.integer)
-
-# Seleccionamos en base al vector las columnas de datos enteros y datos continuos
-intVars <- dfClinicalVars[colsInt]
-numVars <- dfClinicalVars[!colsInt]
-
-# Eliminamos el vector de columnas enteras, ya no es necesario
-rm(colsInt)
-
-# Comprobamos con la variable lIsFactor que hay variables enteras con 2 niveles (factores) y variables con más de 2 niveles. Las variables con 2 niveles son cualitativas y las demás son cuantitativas de números enteros.
-lIsFactor <- sapply(intVars, function(v) {
-  return(!(length(levels(as.factor(v))) > 4)) 
+# Por si acaso hay alguna variable numerica que en realidad sea un factor, se utiliza la función unique()
+vColIsFactor <- sapply(dfClinicalVars, function(v) {
+  return(!(length(unique(v)) > 4)) 
 })
 
 # Seleccionamos las variables que son factores
-facVars <- intVars[lIsFactor] 
+dfFacVars <- dfClinicalVars[vColIsFactor]
+
+# Las variables que no son factores son numericas
+dfNumVars <- dfClinicalVars[!vColIsFactor]
+
+# Guardamos en un vector boleano si la variable es tipo integer
+vColsInt <- sapply(dfNumVars, is.integer)
+
+# Seleccionamos las columnas de datos enteros
+dfIntVars <- dfNumVars[vColsInt]
+
+# Filtramos las variables que no son numeros enteros
+dfNumVars <- dfNumVars[!vColsInt]
 
 # ----------------------------------------------------------------------
 
 # Mostramos el número de variables de cada tipo
-sprintf("Número de variables numéricas cuantitativas: %d", length(numVars))
-sprintf("Número de variables enteras cuantitativas: %d", length(intVars[!lIsFactor]))
-sprintf("Número de variables categóricas: %d", length(facVars))
-
-# Añadimos a las variables numericas las variables enteras cuantitativas
-numVars <- cbind(numVars, intVars[!lIsFactor])
+sprintf("Número de variables numéricas cuantitativas: %d", length(dfNumVars))
+sprintf("Número de variables enteras cuantitativas: %d", length(dfIntVars))
+sprintf("Número de variables categóricas: %d", length(dfFacVars))
 
 # ----------------------------------------------------------------------
 
 # Transformamos a factores las variables cualitativas
-facVars[,1:ncol(facVars)] <- lapply(facVars[,1:ncol(facVars)], function(x) {
-  myFactor <- factor(x)
-  if (length(levels(myFactor)) < 4) { # RCB.category
-    if (sum(levels(myFactor) != c("2", "3")) > 1) { # Grade.pre.chemotherapy
-      if (sum(levels(myFactor) == c("-1", "1")) > 1) { # ER.status, HER2.status & LN.at.diagnosis
-        x <- replace(x, x == -1, 0)
-      }
-      myFactor <- as.logical(x)
+dfFacVars[, 1:ncol(dfFacVars)] <-
+  # TODO esto no funciona, preguntar al papa
+  lapply(dfFacVars[, 1:ncol(dfFacVars)], function(x) {
+    myFactor <- factor(x)
+    
+    # RCB.category
+    if (length(levels(myFactor)) == 4) {
+      levels(myFactor) <- c("pCR", "RCB-I", "RCB-II", "RCB-III")
     }
-  } else {
-    levels(myFactor) <- c("pCR", "RCB-I", "RCB-II", "RCB-III")
-  }
-  return(myFactor)
-})
+    
+    # Todos los factores con dos niveles
+    if (length(levels(myFactor)) == 2) {
+      
+      # Grade.pre.chemotherapy
+      if (sum(levels(myFactor) != c("2", "3")) > 1) {
+        
+        # ER.status, HER2.status & LN.at.diagnosis
+        if (!(sum(levels(myFactor) != c("-1", "1")) > 1)) {
+          x <- replace(x, x == -1, 0)
+        }
+        
+        myFactor <- as.logical(x)
+        
+      }
+    }
+    
+    return(myFactor)
+    
+  })
 
-# Mostramos las variables de tipo factor
-str(facVars)
-# summary(facVars)
+# Mostramos las variables
+str(dfIntVars)
+str(dfFacVars)
+# summary(dfFacVars)
 
 # ----------------------------------------------------------------------
 
@@ -151,13 +166,14 @@ str(facVars)
 dfClinical <- cbind(
   X = dfClinical$X,
   Trial.ID = dfClinical$Trial.ID,
-  facVars,
-  numVars)
+  dfFacVars,
+  dfIntVars,
+  dfNumVars)
 
 # ----------------------------------------------------------------------
 
 # Se puede eliminar las variables que ya no son necesarias
-rm(facVars, numVars, intVars, lIsFactor, dfClinicalVars)
+rm(dfNumVars, dfIntVars, vColsInt, vColIsFactor, dfClinicalVars)
 ```
 
 Para mostrar la información de las variables categóricas, se va a utilizar la función `describe()` del paquete `Hmisc` porque muestra genera una salida más detallada y comprensible.
@@ -167,10 +183,22 @@ library(Hmisc) # <- función `describe()`
 library(tidyverse) # <- necesario para reorganizar dataframes y usar tuberias
 
 # La función describe del paquete Hmisc muestra un output más comprensible que la función summary
-html(describe(facVars))
+html(describe(dfFacVars))
 ```
 
-Obtenemos que hay 54 variables númericas cuantitativas (44 reales y 11 enteras) y 17 variables de tipo factor cualitativas o categóricas. Además, las variables de tipo categoricas se pueden tratar como booleanas (verdadero o falso) porque solo toman dos valores: 0 o 1, o, -1 y 1. Excepto dos variables: "**Grade.pre.chemotherapy**" que toma valores de 2 o 3, y "**RCB.category**" con 4 niveles.
+Obtenemos que hay 52 variables númericas cuantitativas (43 reales y 11 enteras) y 18 variables de tipo factor cualitativas o categóricas. Además, las variables de tipo categoricas se pueden tratar como booleanas (verdadero o falso) porque solo toman dos valores: 0 o 1, o, -1 y 1. Las siguientes variables no cumplen esta norma:
+
+-   "**Grade.pre.chemotherapy**": toma valores de 2 o 3.
+
+-   "**RCB.category**": indica la clasificación "*residual cancer burden*", presenta cuatro niveles, pCR, RCB-I, RCB-II y RCB-III.
+
+En las variables enteras, cabe destacar dos variables:
+
+-   "**ER.Allred**": corresponde con la puntuación "*Allred*" para la evaluación de receptores de estrógenos y progesterona. Toma valores de 0 a 8, siendo valores discretos. Las puntuaciones de 0 a 2 se consideran negativas y las puntuaciones de 3-8 se consideran positivas. Estos valores coinciden con la variable lógica "**ER.status**".
+
+-   "**Chemo.NumCycles**": corresponde con el número de ciclos de quimioterapia que ha recibido la paciente. En esta muestra, las pacientes recibieron 2, 4, 5, 6 o 7 ciclos de quimioterapia.
+
+Estas dos variables numericas de tipo entero no deberían de analizarse con las demás variables cuantitativas, ya que su rango de valores es pequeño. Se podría trabajar con ellas como si fuesen factores, pero no vale la pena.
 
 ## Variables que miden la respuesta al tratamiento.
 
