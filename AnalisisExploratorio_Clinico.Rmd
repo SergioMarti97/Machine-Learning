@@ -1,0 +1,261 @@
+---
+title: "Análisis Exploratorio"
+author: "Sergio Martí"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Análisis Exploratorio
+
+Se parten de cuatro archivos distintos que analizar: datos clínicos, datos del sistema inmunológico, datos del análisis digital del tumor y datos procedentes de cuantificación de RNA-seq. Para cada achivo se debe de responder a las siguientes preguntas:
+
+-   Número de predictores.
+-   Número de muestras.
+-   Tipo de identificador correspondiente al paciente.
+-   Cantidad de pacientes con datos disponibles en las cuatro fuentes de datos.
+
+## Datos clínicos.
+
+Los datos clínicos se encuentra en formato "csv" (coma separeted values) dentro del archivo llamado "Main.csv". Para leer estos datos en R se utilizará la función `read.csv()`. Esta función sirve para leer este tipo de archivos, y los carga en memoria como un dataframe.
+
+```{r}
+# Lemos los datos clínicos
+dfClinical <- read.csv("./datos/Main.csv")
+
+# Visualizar el dataframe
+# View(dfClinical)
+```
+
+### Número de predictores y número de muestras.
+
+El número de muestras se puede obtener contando el número de registros:
+
+```{r}
+# Número de registros
+nrow(dfClinical)
+```
+
+El número de predictores se pude calcular a partir del número de variables del dataframe:
+
+```{r}
+# Número de columnas
+ncol(dfClinical)
+```
+
+A partir de aquí hay que descontar las variables que no se pueden utilizar como predictores. Las variables "**X**" y "**Trial.ID**" son los identificadores de los pacientes. Destacar que hay cinco variables que aportan información sobre la respuesta del tratamiento. La variable "**resp.pCR**" determina si la paciente ha respondido de forma satisfactoria al nuevo tratamiento o no. Se ha indicado que las variables: "**resp.Chemosensitive**", "**resp.Chemoresistant**", "**RCB.score**" y "**RCB.category**" son redundantes con la primera. Más adelante se explica mejor a que hacen referencia cada una.
+
+```{r}
+# Las 8 primeras columnas son los ids de los pacientes y variables de respuesta al tratamiento
+ncol(dfClinical[,8:ncol(dfClinical)])
+```
+
+Descontando las variables anteriores, hay 67 variables clínicas que se pueden utilizar como predictores.
+
+### Valores nulos.
+
+Para calcular el número de nulos, se puede utilizar la función `is.na()`. Esta función devuleve verdadero o falso si un vector contiene valores nulos. La función `sum()` suma todos los valores de un vector. Utilizando ambas funciones se puede determinar si las variables del dataframe contienen nulos.
+
+```{r}
+# Encontrar si hay algún dato "Not Available"
+sum(is.na(dfClinical[,3:ncol(dfClinical)])) > 1
+
+# Encontrar si hay algún dato nulo
+sum(is.null(dfClinical[,3:ncol(dfClinical)])) > 1
+```
+
+No hay ningún registro que sea "Not Available" (NA) o nulo (NULL) en las variables clínicas.
+
+Si hubiera algún dato nulo o not available, dependiendo de la naturaleza de los datos se podrían tomar diferentes estratégias para resolver el problema: una opción es decidir no trabajar con los registros que contienen nulos. Es una buena opción si se tiene una muestra muy grande, pero se tiene que tener en cuenta que se pierde información al realiar esta selección. Otra opción es asignar el valor promedio de la variable a los registros con datos nulos o not available. Si la variable es de tipo categórica/cualitativa, se puede asignar el valor que más se repite. Si la variable es cuantitativa, se puede asignar el valor estadístico de la media o la moda.
+
+### Número de variables numéricas y variables categóricas.
+
+Previamente a realizar un análisis, es necesario comprobar la naturaleza de estos datos. Utilizando la función `str()` se puede obtener esta información.
+
+```{r}
+# Comprobamos la naturaleza de las variables
+str(dfClinical)
+```
+
+Con este resultado, se puede comprobar el tipo de las variables presentes en el dataframe. No es necesaria ninguna reorganización del dataframe porque las variables se encuentran en las columnas y los datos de los pacientes se encuentran en las filas o registros.
+
+A cotinuación, se va a proceder a separar las variables cuantitativas de las variables cualitativas presentes en el dataframe. Ya que los dos tipos de variables requiren tratarse de forma distinta.
+
+Se ha comprobado mediante la función `str()` y `is.numeric()` que todas las variables del dataframe son númericas (menos la variable "**Trial.ID**" que es el identificador de la paciente). Se utilizará las funciones `is.integer()` para determinar si la variable es un número entero, `as.factor()` para convertir la variable entera a un factor, `levels()` para determinar el número de niveles del factor y `sapply()` para poder aplicar las funciones anteriores a todas las columnas del dataframe.
+
+Se van a utilizar las funciones anteriores para construir un algoritmo que determine si una variable es cuantitativa o categórica. Si una variable entera se transforma a un factor, y tiene dos o tres niveles, se entiende que es una variable categórica. En cambio, si no se cumple esta condición, la variable es cuantitativa de tipo entero; como por ejemplo, la edad de la paciente cuando se diagnostico la enfermedad ("**Age.at.diagnosis**").
+
+```{r}
+# Comprobamos que todas las variables son numericas
+sum(is.numeric(dfClinical[,3:ncol(dfClinical)])) > 1
+
+# Seleccionamos solamente las variables que se pueden utilizar como predictores
+dfClinicalVars <- dfClinical[,3:ncol(dfClinical)]
+
+# Guardamos en un vector boleano si la variable es entera o numerica
+colsInt <- sapply(dfClinicalVars, is.integer)
+
+# Seleccionamos en base al vector las columnas de datos enteros y datos continuos
+intVars <- dfClinicalVars[colsInt]
+numVars <- dfClinicalVars[!colsInt]
+
+# Eliminamos el vector de columnas enteras, ya no es necesario
+rm(colsInt)
+
+# Comprobamos con la variable lIsFactor que hay variables enteras con 2 niveles (factores) y variables con más de 2 niveles. Las variables con 2 niveles son cualitativas y las demás son cuantitativas de números enteros.
+lIsFactor <- sapply(intVars, function(v) {
+  return(!(length(levels(as.factor(v))) > 4)) 
+})
+
+# Seleccionamos las variables que son factores
+facVars <- intVars[lIsFactor] 
+
+# ----------------------------------------------------------------------
+
+# Mostramos el número de variables de cada tipo
+sprintf("Número de variables numéricas cuantitativas: %d", length(numVars))
+sprintf("Número de variables enteras cuantitativas: %d", length(intVars[!lIsFactor]))
+sprintf("Número de variables categóricas: %d", length(facVars))
+
+# Añadimos a las variables numericas las variables enteras cuantitativas
+numVars <- cbind(numVars, intVars[!lIsFactor])
+
+# ----------------------------------------------------------------------
+
+# Transformamos a factores las variables cualitativas
+facVars[,1:ncol(facVars)] <- lapply(facVars[,1:ncol(facVars)], function(x) {
+  myFactor <- factor(x)
+  if (length(levels(myFactor)) < 4) { # RCB.category
+    if (sum(levels(myFactor) != c("2", "3")) > 1) { # Grade.pre.chemotherapy
+      if (sum(levels(myFactor) == c("-1", "1")) > 1) { # ER.status, HER2.status & LN.at.diagnosis
+        x <- replace(x, x == -1, 0)
+      }
+      myFactor <- as.logical(x)
+    }
+  } else {
+    levels(myFactor) <- c("pCR", "RCB-I", "RCB-II", "RCB-III")
+  }
+  return(myFactor)
+})
+
+# Mostramos las variables de tipo factor
+str(facVars)
+# summary(facVars)
+
+# ----------------------------------------------------------------------
+
+# Construimos un nuevo dataframe, reescribiendo el anterior, con los datos clínicos, ahora que cada variable tiene su tipo correcto (numerico, entero, logico o factor)
+dfClinical <- cbind(
+  X = dfClinical$X,
+  Trial.ID = dfClinical$Trial.ID,
+  facVars,
+  numVars)
+
+# ----------------------------------------------------------------------
+
+# Se puede eliminar las variables que ya no son necesarias
+rm(facVars, numVars, intVars, lIsFactor, dfClinicalVars)
+```
+
+Para mostrar la información de las variables categóricas, se va a utilizar la función `describe()` del paquete `Hmisc` porque muestra genera una salida más detallada y comprensible.
+
+```{r}
+library(Hmisc) # <- función `describe()`
+library(tidyverse) # <- necesario para reorganizar dataframes y usar tuberias
+
+# La función describe del paquete Hmisc muestra un output más comprensible que la función summary
+html(describe(facVars))
+```
+
+Obtenemos que hay 54 variables númericas cuantitativas (44 reales y 11 enteras) y 17 variables de tipo factor cualitativas o categóricas. Además, las variables de tipo categoricas se pueden tratar como booleanas (verdadero o falso) porque solo toman dos valores: 0 o 1, o, -1 y 1. Excepto dos variables: "**Grade.pre.chemotherapy**" que toma valores de 2 o 3, y "**RCB.category**" con 4 niveles.
+
+## Variables que miden la respuesta al tratamiento.
+
+Como se ha comentado anteriormente, las variables más importantes son las que aportan información sobre la respuesta del tratamiento. Estas son: "**resp.pCR**", "**resp.Chemosensitive**", "**resp.Chemoresistant**", "**RCB.score**" y "**RCB.category**".
+
+Durante la cirugía, a cada paciente, se evaluó la respuesta a dicho tratamiento utilizando la clasificación de "**carga de cáncer residual**", en inglés "***Residual Cancer Burden***", llamado por sus siglas: **RCB**.
+
+-   **resp.pCR**: variable de tipo booleana. Determina si la paciente ha respondido al tratamiento o no. 38 pacientes (26%) han respondido de forma positiva al tratamiento, mientras que 109 (74%) no han respondido positivamente. La variable "**RCB.category**" explica más detalladamente la respuesta al tratamiento.
+-   **resp.Chemosensitive**: variable de tipo booleana. Determina si el tumor es sensible al tratamiento con quimioterapia. Es decir, si se ve afectado con la medicación. 86 pacientes (59%) no son sensibles al tratamiento y 61 (41%) son sensibles.
+-   **resp.Chemoresistant**: variable de tipo booleana parecida a la anterior. Determina si el tumor es resistente al tratamiento con quimioterapia. 122 pacientes (83%) no son resistentes y 25 (17%) pacientes tienen tumores resistentes al tratamiento. Las 25 pacientes que son resistentes al tratamiento están clasificadas en el factor "**RCB.category**" como "RCB-III".
+-   **RCB.score**: variable de tipo cuantitativa numérica. Es la puntuación asignada a cada paciente en la clasificación "RCB". Valores más altos significa que han quedado más restos del cáncer en la paciente. Si la puntuación es de cero, no hay retazgos residuales del cáncer, por lo que la paciente ha respondido de forma satisfactoria al tratamiento. En otras palabras: todas las pacientes que han respondido al tratamiento correctamente (pCR) tienen una puntuación de cero.
+-   **RCB.category**: variable de tipo categórica con cuatro niveles: 0, 1, 2, 3 y 4. Clasifica los tumores de las pacientes mediante la clasificación "*Residual Cancer Burden*". Los niveles corresponden por orden a:
+    -   [pCR]{.underline}: la paciente ha tenido una respuesta completa. Según los datos analizados, 38 pacientes (26%) corresponden a esta categoria. El artículo dice que son 42 pacientes.
+
+    -   [RCB-I]{.underline}: la paciente ha tenido una buena respuesta. 23 pacientes (16%) se clasificaron en esta respuesta, 25 según el artículo.
+
+    -   [RCB-II]{.underline}: la paciente ha tenido una respuesta moderada. 61 pacientes (41%), 65 en el artículo.
+
+    -   [RCB-III]{.underline}: la paciente presenta resiudos extensos de la efermedad. 25 pacientes (17%), 29 en el artículo.
+
+Estas variables son redudantes entre si. Se dan los siguientes casos:
+
+-   La variable "**resp.pCR**" coincide con los mismos datos que la variable "**RCB.category**", ya que las pacientes que han respondido de forma completa al tratamiento (según la clasificación, los casos pCR) son los registros positivos de "**resp.pCR**".
+
+-   Las pacientes con tumores resistentes a la quimioterapia, "**resp.Chemoresistant**" se clasifican como "RCB-III" en el factor "**RCB.category**", el caso con peor respuesta al tratamiento.
+
+-   Las pacientes con tumores sensibles a la quimioterapia, "**resp.Chemosensitive**" son pacientes clasificadas como "pCR" y "RCB-I" en el factor "**RCB.category**", los dos casos con mejor respuesta al tratamiento.
+
+-   La variable "**RCB.score**", que es numérica y cuantitativa, es la puntuación asignada a cada paciente según la clasificación RCB. Por lo tanto, es redundánte con la variable "**RCB.category**" ya que es la misma información pero discretizada (convertida a niveles).
+
+```{r}
+# Las pacientes resistentes a la quimioterapia son las mismas clasificadas como RCB-III.
+lPatientsChemoresistant <- dfClinical[dfClinical$resp.Chemoresistant == TRUE,]$Trial.ID
+lPatientsChemoresistant
+lPatientsRCB3 <- dfClinical[dfClinical$RCB.category == "RCB-III",]$Trial.ID
+lPatientsRCB3
+bAreEqual <- sum(lPatientsChemoresistant == lPatientsRCB3) > 1
+sprintf("¿Las pacientes resistentes a la quimioterapia están clasficadas como RCB-III?: %s", ifelse(bAreEqual, "sí", "no"))
+rm(lPatientsChemoresistant, lPatientsRCB3, bAreEqual)
+
+# Las pacientes con tumores sensibles a la quimioterapia están clasificadas en pCR o RCB-I
+unique(dfClinical[dfClinical$resp.Chemosensitive == TRUE,]$RCB.category)
+unique(dfClinical[dfClinical$resp.Chemosensitive == FALSE,]$RCB.category)
+```
+
+Ahora, se va a proceder a gráficar las variables, con el fin de mostrar mejor su distribución:
+
+```{r}
+ggplot2::ggplot(dfClinical, aes(x = resp.pCR)) + 
+  ggplot2::geom_bar() + 
+  ggplot2::ggtitle("resp.pCR")
+
+# resp.Chemosensitive
+ggplot2::ggplot(dfClinical, aes(x = resp.Chemosensitive)) + 
+  ggplot2::geom_bar() + 
+  ggplot2::ggtitle("resp.Chemosensitive")
+
+# resp.Chemoresistant
+ggplot2::ggplot(dfClinical, aes(x = resp.Chemoresistant)) + 
+  ggplot2::geom_bar() + 
+  ggplot2::ggtitle("resp.Chemoresistant")
+
+# RCB.score
+ggplot2::ggplot(dfClinical, aes(x = RCB.score)) + 
+  ggplot2::geom_histogram() + 
+  ggplot2::ggtitle("RCB.score")
+
+# RCB.category
+ggplot2::ggplot(dfClinical, aes(x = RCB.category)) + 
+  ggplot2::geom_bar() + 
+  ggplot2::ggtitle("RCB.category")
+```
+
+Posteriormente, se van a realizar análisis de correlación para las variables clínicas y modelos de regresión logística para predecir la variable "**resp.pCR**".
+
+Es relevante comprobar que diferencias produce el factor "**resp.pCR**" sobre la variable "**RCB.score**". Porque, esto puede ayudar a descartar alguna de ellas para el análisis.
+
+```{r}
+ggplot2::ggplot(dfClinical, aes(x = RCB.category, y = RCB.score)) + 
+  ggplot2::geom_boxplot() + 
+  ggplot2::theme_classic()
+```
+
+## Guardar archivos RDS
+
+```{r}
+saveRDS(dfClinical, file = "dfClinical.RDS")
+```

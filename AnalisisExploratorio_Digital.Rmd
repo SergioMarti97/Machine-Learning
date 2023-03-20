@@ -1,0 +1,39 @@
+---
+title: "Análisis Exploratorio"
+author: "Sergio Martí"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Datos análisis digital
+
+```{r}
+# Lemos los datos clínicos
+dfDigital <- read.table(file="./datos/DigPathology.tsv", sep = '\t', header = TRUE)
+
+
+# Visualizar el dataframe
+View(dfDigital)
+```
+
+## Datos sistema inmune
+
+```{r}
+# Lemos los datos clínicos
+dfInmune <- read.table(file="./datos/mutational-signatures.tsv", sep = '\t', header = TRUE)
+
+
+# Visualizar el dataframe
+View(dfInmune)
+```
+
+## Datos transcriptómicos
+
+```{r}
+# Lemos los datos clínicos
+dfTranscript <- read.table(file="./datos/RNAseq-rawcounts.tsv", sep = '\t', header = TRUE)
+
+
+# Visualizar el dataframe
+View(dfTranscript)
+```

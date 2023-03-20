@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Introducción
 
-En este trabajo se va a realizar un análisis estadístico con datos de variada naturaleza procedentes de mujeres con cáncer de mama. El objetivo del trabajo es desarrollar un modelo estadístico para predecir si una determina paciente va a responder de forma satisfactoria a un determinado tratamiento neoadyuvante previo a la cirugía que conlleva la extirpación del tumor.
+En este trabajo se va a realizar un análisis estadístico con datos de variada naturaleza procedentes de mujeres con cáncer de mama. El objetivo del trabajo es desarrollar un modelo estadístico para predecir si una determina paciente va a responder de forma satisfactoria a un determinado tratamiento neoadyuvante previo a la cirugía que conlleva la extirpación del tumor. La terapia neodyuvante consiste en la administración de agentes terapéuticos antes del tratamiento principal.
 
 Los datos de los que se dispone son:
 
@@ -22,5 +22,3 @@ Los datos de los que se dispone son:
 -   **Datos del sistema inmunológico**: detalles sobre el sistema inmune de la paciente.
 
 -   **Cuantificación transcriptómica**: cuantificación de los reads sin normalizar procedentes de RNA-seq de genes relevantes para el estudio.
-
-Las variables más importantes son las que aportan información sobre la respuesta del tratamiento. A cada paciente, después de haberse aplicado dicho tratamiento, se le realiza un RCB (Residual Cancer Burden) durante la cirugía. Con esta prueba, se ha determinado que el 26% de los pacientes tuvieron una respuesta patológica completa (pCR) el 16% una buena respuesta (RCB-I), el 40% una respuesta moderada (RCB-II) y el 18% tenían residuos extendidos de la enfermedad (RCB-III).

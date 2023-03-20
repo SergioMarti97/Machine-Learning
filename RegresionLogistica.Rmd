@@ -1,0 +1,50 @@
+---
+title: "Regresión logística"
+author: "Sergio Martí"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Regresión logística
+
+Se pide elaborar sendos modelos de regresión logística para predecir la respuesta al tratamiento. La respuesta al tratamiento se almacena en el factor "**resp.pCR**".
+
+```{r}
+# Cargar los datos
+dfClinical <- readRDS("./dfClinical.RDS")
+dfSelectedVars <- readRDS("./selectedVars.RDS")
+
+# Escalar los datos
+dfVars <- data.frame(scale(dfSelectedVars[,3:ncol(dfSelectedVars)]))
+
+# Añadir la columna del factor
+dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
+
+str(dfVars)
+```
+
+Antes de construir el modelo de regresión logística, se va a proceder a visualizar las variables en función del factor "**resp.pCR**".
+
+```{r}
+# Aplicar un constraste de igualdad de medias para dos poblaciones independientes.
+# Encontraremos las variables donde el factor "resp.pCR" proboca diferencias significativas
+lapply(2:ncol(dfVars), function(i) {
+  
+  sColName <- colnames(dfVars)[i]
+  v <- dfVars[[i]]
+  
+  ggplot2::ggplot(dfVars, ggplot2::aes(x = resp.pCR, y = v)) + 
+    ggplot2::geom_boxplot() + 
+    ggplot2::stat_summary(fun.y=mean, geom="point", size=2, color="red") + 
+    ggplot2::labs(title=paste0(sColName, " según resp.pCR"), x="resp.pCR", y=sColName) + 
+    ggplot2::theme_classic()
+})
+```
+
+Contruir el modelo de regresión logística.
+
+```{r}
+modelo <- glm(resp.pCR ~ ., family = binomial(link="logit"), data = dfVars)
+
+summary(modelo)
+```

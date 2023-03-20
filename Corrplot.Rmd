@@ -1,0 +1,89 @@
+---
+title: "Correlación entre las variables"
+author: "Sergio Martí"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Correlación entre las variables
+
+Se va a realizar un análisis de correlación de las variables clínicas.
+
+Las variables cuantitativas se han obtenido en el paso anterior, de forma que se han separado las variables categóricas de las cuantitativas. Las variable "**RCB.score**" es cuantitativa, pero es redudante con la variable que se quiere predecir, "**resp.pCR**". Por ello, no se utiliza en este análisis.
+
+```{r}
+# Cargar los datos
+dfClinical <- readRDS("./dfClinical.RDS")
+
+# Filtramos para obtener solamente las variables numericas (eliminamos factores y logicas)
+bIsFactor <- sapply(dfClinical, is.factor)
+dfVars <- dfClinical[,!bIsFactor]
+
+bIsLogic <- sapply(dfVars, is.logical)
+dfVars <- dfVars <- dfVars[,!bIsLogic]
+
+rm(bIsFactor, bIsLogic)
+
+# Eliminamos la variable "RCB.score" por ser redudánte con la variable predictoria
+dfVars$RCB.score <- NULL 
+```
+
+Las variables no están en las mismas unidades, por lo tanto, antes de calcular la matriz de correlación, la cual se calcula con la función `cor()`, se deben de escalar los datos con la función `scale()`. Esta función tipifica los datos (es decir, resta la media y divide por la desviación típica). Esta transformación ayuda a reducir el efecto de la escala de las variables.
+
+```{r}
+# Calcular la matriz de correlación, las dos primeras columnas no se utilizan (X y Trial.ID)
+mCor <- cor(scale(dfVars[,3:ncol(dfVars)]))
+
+# Librería para graficar la matriz de correlaciones
+library(corrplot)
+
+# Gráfica de la matriz de correlación
+corrplot(mCor, method = "color",
+         order = "hclust",
+         addrect = 5,
+         type = "full",
+         diag = TRUE,
+         tl.col = "black",
+         tl.cex = 0.4)
+```
+
+Tras calcular la matriz de correlación, se ejecuta la función `findCorrelation()`. Realiza una búsqueda en la matriz para encontrar aquellas variables cuya media de correlación en valor absoluto es mayor a un cierto valor elegido (*threshold*). Esta función se encuentra dentro del paquete `caret`.
+
+```{r}
+library(caret) # Contiene la función findCorrelation
+
+# Obtener las variables más correlacionadas
+lVarDrop <- findCorrelation(mCor, cutoff = 0.9) # 0.9
+
+# Mostramos las variables altamente correlacionadas:
+sprintf("Número de variables altamente correlacionadas: %d", length(lVarDrop))
+colnames(numVars[lVarDrop])
+
+# Eliminar las variables altamente correlacionadas
+dfSelectedVars <- subset(dfVars, select = -lVarDrop)
+
+# Guardar el resultado como .RDS
+saveRDS(dfSelectedVars, "selectedVars.RDS")
+```
+
+## Análisis de componentes principales
+
+Se va a realizar un análisis de componentes principales para comprobar si hay separabilidad entre los grupos de pacientes clasificados según la respuesta al tratamiento (**RCB.category**).
+
+```{r}
+# Calcular las componentes principales
+pca <- prcomp(dfVars[3:ncol(dfVars)], scale = TRUE)
+
+# Añadir la columna del factor
+dfPCA <- data.frame(pca$x[,1:2])
+dfPCA <- cbind(dfPCA, RCB.category=dfClinical$RCB.category)
+
+# Graficar el resultado en un gráfico de dispersion
+ggplot2::ggplot(dfPCA, aes(PC1, PC2)) + 
+  ggplot2::geom_point(aes(color=RCB.category)) +
+  ggplot2::xlab("Primera componente principal") + 
+  ggplot2::ylab("Segunda componente principal") + 
+  ggplot2::ggtitle("Representación de las dos primeras componentes principales")
+```
+
+A primera vista, realizando un PCA, no se aprecia separabilidad entre los grupos.
