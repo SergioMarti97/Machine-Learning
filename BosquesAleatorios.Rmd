@@ -20,7 +20,7 @@ Tanto la eliminación recursiva de variables, como la construcción del modelo d
 library(caret)
 ```
 
-Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "`registerDoParallel()``".
+Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "\`registerDoParallel()\`\`".
 
 ```{r}
 # Cargar la librería doParallel
@@ -28,6 +28,7 @@ library(doParallel)
 
 registerDoParallel(cores=4)
 ```
+
 Además, algunas funciones hacen sus calculos a partir de números aleatorios. Para poder asegurar la reproducibilidad de los datos, se va a configurar la semilla a partir de la cual se generan los números pseudo-aleatorios. De esa forma siempre saldrán los mismos resultados.
 
 ```{r}
@@ -44,20 +45,38 @@ Para trabajar con los datos clínicos, se ha decidido eliminar las variables alt
 dfClinical <- readRDS("./dfClinical.RDS")
 dfSelectedVars <- readRDS("./selectedVars.RDS")
 
-# Escalar los datos
-dfVars <- data.frame(scale(dfSelectedVars[,3:ncol(dfSelectedVars)]))
+# Seleccionar las variables numéricas
+dfVars <- data.frame(dfSelectedVars[,3:ncol(dfSelectedVars)])
 
-# Añadir la columna del factor
+# Seleccionar las variables categóricas
+vColsFac <- sapply(dfClinical, is.factor)
+
+# Seleccionar las variables de tipo lógico
+vColsLogic <- sapply(dfClinical, is.logical)
+
+# Obtener las variables categóricas y lógicas
+dfFac <- dfClinical[,vColsFac]
+dfLogic <- dfClinical[,vColsLogic]
+
+# Añadir la columna del factor, las variables categóricas y las lógicas
+# dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars, dfFac, dfLogic)
 dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
+
+
+# Reformular la variable resp.pCR porque si no caret da un error
+dfVars$resp.pCR <- factor(dfVars$resp.pCR, levels=c("TRUE", "FALSE"), labels=c("Responde", "No responde"))
+
+# Eliminar variables que no se van a utilizar
+rm(vColsFac, vColsLogic, dfFac, dfLogic)
 ```
 
 Además, se va a crear un data frame con menos datos, para poder realizar pruebas.
 
 ```{r}
 # Crear un dataframe con datos reducido
-vCols <- sample(1:nrow(dfVars), nrow(dfVars) * 0.10)
-dfSmall <- dfVars[vCols,]
-rm(vCols)
+vRows <- sample(1:nrow(dfVars), nrow(dfVars) * 0.10)
+dfSmall <- dfVars[vRows,]
+rm(vRows)
 ```
 
 A continuación, se va a definir el modelo de selección mediante bosques aleatorios.
@@ -74,12 +93,85 @@ ctrl.rfranker.cv.4 <- sbfControl(functions = rfSBF,
                                 allowParallel = TRUE)
 ```
 
+#### Selección mediante filtros
+
 Para seleccionar variables mediante filtros se realiza la siguiente operación:
 
 ```{r}
+# Filtrado mediante bosques aleatorios
 set.seed(234)
 
-rf.ranker.cv.4 <- sbf(resp.pCR ~ ., data=dfSmall, sbfControl = ctrl.rfranker.cv.4)
+rf.ranker.cv.4 <- sbf(resp.pCR ~ ., data=dfVars, sbfControl = ctrl.rfranker.cv.4)
+
 rf.ranker.cv.4
 ```
 
+#### Selección recursiva
+
+```{r}
+#Eliminación recursiva RandomForest:
+subsets <- c(3:40)
+
+set.seed(123)
+
+seeds <- vector(mode = "list", length = 6)
+
+for(i in 1:10) {
+  seeds[[i]] <- sample.int(1000, length(subsets) + 1)
+}
+
+seeds[[11]] <- sample.int(1000, 1)
+
+ctrl.rf.rfe.cv.2 <- rfeControl(functions = rfFuncs, 
+                                     method = "cv", 
+                                     number = 2, 
+                                     seeds = seeds,
+                                     returnResamp="final", 
+                                     verbose = TRUE,
+                                     allowParallel = TRUE)
+
+set.seed(342)
+
+rf.rfe.cv.2 <- rfe(resp.pCR ~ ., data = dfVars, sizes = subsets, rfeControl = ctrl.rf.rfe.cv.2)
+
+# --- Resultados --- #
+
+# Resultados del modelo de random forest
+rf.rfe.cv.2
+
+# Número de variables
+rf.rfe.cv.2$bestSubset
+
+# Las variables
+rf.rfe.cv.2$optVariables
+
+# Accuracy
+rf.rfe.cv.2$results[rf.rfe.cv.2$results$Variables == rf.rfe.cv.2$bestSubset, "Accuracy"]
+
+# Matriz de confusión
+rf.rfe.cv.2$fit$confusion
+
+# Importancia
+rf.rfe.cv.2$fit$importance
+```
+
+Las variables clínicas más importantes según el modelo de bosques aleatorios son siete:
+
+-   "**PGR.log2.tpm**":
+
+-   "**median_lymph_KDE_knn_50**":
+
+-   "**Danaher.Neutrophils**":
+
+-   "**ESC.ssgsea.notnorm**":
+
+-   "**HRD.LST**":
+
+-   "**Danaher.Mast.cells**":
+
+-   "**Swanton.PaclitaxelScore**":
+
+```{r}
+# Guardar los archivos RDS
+saveRDS(rf.rfe.cv.2, "./randomForestResult.RDS")
+```
