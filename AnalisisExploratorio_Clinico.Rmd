@@ -247,27 +247,27 @@ unique(dfClinical[dfClinical$resp.Chemosensitive == FALSE,]$RCB.category)
 Ahora, se va a proceder a gráficar las variables, con el fin de mostrar mejor su distribución:
 
 ```{r}
-ggplot2::ggplot(dfClinical, aes(x = resp.pCR)) + 
+ggplot2::ggplot(dfClinical, ggplot2::aes(x = resp.pCR)) + 
   ggplot2::geom_bar() + 
   ggplot2::ggtitle("resp.pCR")
 
 # resp.Chemosensitive
-ggplot2::ggplot(dfClinical, aes(x = resp.Chemosensitive)) + 
+ggplot2::ggplot(dfClinical, ggplot2::aes(x = resp.Chemosensitive)) + 
   ggplot2::geom_bar() + 
   ggplot2::ggtitle("resp.Chemosensitive")
 
 # resp.Chemoresistant
-ggplot2::ggplot(dfClinical, aes(x = resp.Chemoresistant)) + 
+ggplot2::ggplot(dfClinical, ggplot2::aes(x = resp.Chemoresistant)) + 
   ggplot2::geom_bar() + 
   ggplot2::ggtitle("resp.Chemoresistant")
 
 # RCB.score
-ggplot2::ggplot(dfClinical, aes(x = RCB.score)) + 
+ggplot2::ggplot(dfClinical, ggplot2::aes(x = RCB.score)) + 
   ggplot2::geom_histogram() + 
   ggplot2::ggtitle("RCB.score")
 
 # RCB.category
-ggplot2::ggplot(dfClinical, aes(x = RCB.category)) + 
+ggplot2::ggplot(dfClinical, ggplot2::aes(x = RCB.category)) + 
   ggplot2::geom_bar() + 
   ggplot2::ggtitle("RCB.category")
 ```

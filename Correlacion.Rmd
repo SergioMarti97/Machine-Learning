@@ -25,7 +25,11 @@ dfVars <- dfVars <- dfVars[,!bIsLogic]
 rm(bIsFactor, bIsLogic)
 
 # Eliminamos la variable "RCB.score" por ser redudánte con la variable predictoria
-dfVars$RCB.score <- NULL 
+dfVars$RCB.score <- NULL
+
+# Descartamos las variables "ER.Allred" y "Chemo.NumCycles"
+dfVars$ER.Allred <- NULL
+dfVars$Chemo.NumCycles <- NULL
 ```
 
 Las variables no están en las mismas unidades, por lo tanto, antes de calcular la matriz de correlación, la cual se calcula con la función `cor()`, se deben de escalar los datos con la función `scale()`. Esta función tipifica los datos (es decir, resta la media y divide por la desviación típica). Esta transformación ayuda a reducir el efecto de la escala de las variables.
@@ -49,15 +53,17 @@ corrplot(mCor, method = "color",
 
 Tras calcular la matriz de correlación, se ejecuta la función `findCorrelation()`. Realiza una búsqueda en la matriz para encontrar aquellas variables cuya media de correlación en valor absoluto es mayor a un cierto valor elegido (*threshold*). Esta función se encuentra dentro del paquete `caret`.
 
+De esta forma, se pueden seleccionar las variables que no estan altamente correlacionadas y así evitar el problema de la colinealidad.
+
 ```{r}
 library(caret) # Contiene la función findCorrelation
 
 # Obtener las variables más correlacionadas
-lVarDrop <- findCorrelation(mCor, cutoff = 0.9) # 0.9
+lVarDrop <- findCorrelation(mCor, cutoff = 0.8) # 0.9
 
 # Mostramos las variables altamente correlacionadas:
 sprintf("Número de variables altamente correlacionadas: %d", length(lVarDrop))
-colnames(numVars[lVarDrop])
+colnames(dfVars[lVarDrop])
 
 # Eliminar las variables altamente correlacionadas
 dfSelectedVars <- subset(dfVars, select = -lVarDrop)

@@ -7,7 +7,7 @@ output: html_document
 
 ## Regresión logística
 
-Se pide elaborar sendos modelos de regresión logística para predecir la respuesta al tratamiento. La respuesta al tratamiento se almacena en el factor "**resp.pCR**".
+Se pide elaborar sendos modelos de regresión logística para predecir la respuesta al tratamiento. La respuesta de la paciente al tratamiento se almacena en el factor "**resp.pCR**". El modelo tratará de predecir la probabilidad de que la paciente responda satisfactoriamente al tratamiento, es decir, que la variable "**resp.pCR**" sea verdad. A parte, se tratará de determinar cual de las variables numéricas son más importantes y tendrán más peso a la hora de establecer la predicción, así como si van a ser suficientes o el modelo quedará incompleto y deberá ser completado.
 
 ```{r}
 # Cargar los datos
@@ -20,31 +20,119 @@ dfVars <- data.frame(scale(dfSelectedVars[,3:ncol(dfSelectedVars)]))
 # Añadir la columna del factor
 dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
 
+# Visualizar las variables que se van a utilizar para el modelo
 str(dfVars)
 ```
 
-Antes de construir el modelo de regresión logística, se va a proceder a visualizar las variables en función del factor "**resp.pCR**".
+### Test previo
+
+Antes de construir el modelo de regresión logística, se va a proceder a visualizar las variables en función del factor "**resp.pCR**". Además, se va a realizar un contraste de igualdad de medias para dos poblaciones independientes.
 
 ```{r}
 # Aplicar un constraste de igualdad de medias para dos poblaciones independientes.
 # Encontraremos las variables donde el factor "resp.pCR" proboca diferencias significativas
-lapply(2:ncol(dfVars), function(i) {
+lColsAvgAreDiff <- lapply(2:ncol(dfVars), function(i) {
   
   sColName <- colnames(dfVars)[i]
   v <- dfVars[[i]]
   
+  pob1 <- dfVars[dfVars$resp.pCR == TRUE,i]
+  pob2 <- dfVars[dfVars$resp.pCR == FALSE,i]
+  
+  tVarTest <- var.test(pob1, pob2)
+  bHomoscedasticity <- tVarTest$p.value > 0.05
+  
+  tT.Test <- t.test(pob1, pob2, 
+                    alternative = "two.sided", 
+                    paired = FALSE, 
+                    var.equal = bHomoscedasticity)
+  
+  bAvgAreDiff <- tT.Test$p.value < 0.05 
+  
   ggplot2::ggplot(dfVars, ggplot2::aes(x = resp.pCR, y = v)) + 
-    ggplot2::geom_boxplot() + 
+    ggplot2::geom_boxplot(color = ifelse(bAvgAreDiff, "red", "black")) + 
     ggplot2::stat_summary(fun.y=mean, geom="point", size=2, color="red") + 
     ggplot2::labs(title=paste0(sColName, " según resp.pCR"), x="resp.pCR", y=sColName) + 
     ggplot2::theme_classic()
+  
+  return(bAvgAreDiff)
 })
+
+vColsAvgAreDiff <- unlist(lColsAvgAreDiff)
+rm(lColsAvgAreDiff)
 ```
+
+### Primer modelo de regresión logística
 
 Contruir el modelo de regresión logística.
 
 ```{r}
+# Descartar variables que no presentan diferencias significativas
+dfVars <- dfVars[,unlist(vColsAvgAreDiff)]
+
+# Construcción del modelo de regresión logistica con todas las variables
 modelo <- glm(resp.pCR ~ ., family = binomial(link="logit"), data = dfVars)
 
+# Mostrar los datos del modelo
 summary(modelo)
+```
+
+Calcular las odds-ratio.
+
+```{r}
+# Odds ratio
+coefficients(modelo)
+exp(coefficients(modelo))
+
+# Intervalo confianza
+confint(modelo)
+exp(confint(modelo))
+```
+
+### Segundo modelo de regresión logística
+
+Utilizar todas las variables no tiene porque mejorar el modelo. Muchas de ellas introducen error y empeoran su la capacidad predictiva.
+
+Para mejorar el modelo, se pueden reducir el número de variables utilizadas. Se hará uso de la función `stepAIC` para seleccionar las variables significativas. Esta función compara los modelos al ir agregando variables.
+
+Se calcula un estadístico llamado "AIC", que cuantifica la información que se pierde debido a la simplificación. Durante el proceso, se comprueba si el valor AIC crece o decrece. Este valor cuantifica la información que se pierde debido a la simplifación, por ello, es mejor el modelo que tenga el valor más bajo de "AIC".
+
+```{r}
+# Cargar la librería MASS
+library(MASS)
+
+# Crear un modelo sin variables
+modeloVacio <- glm(resp.pCR ~ 1, family='binomial', data = dfVars)
+
+# Crear el modelo con las variables optimas
+modeloOptimo <- stepAIC(modeloVacio, scope = list(lower=modeloVacio, upper=modelo), direction = 'both')
+
+# Datos del modelo optimo
+summary(modeloOptimo)
+```
+
+Mediante la función `stepAIC()`, se ha determinado que el modelo que minimiza el valor de "AIC" es utilizando las variables: "**PGR.log2.tpm**", "**Age.at.diagnosis**", "**TIDE.CD8**", "**Danaher.Mast.cells**", "**CytScore.log2**", "**Danaher.Macrophages**".
+
+```{r}
+# Odds ratio
+coefficients(modeloOptimo)
+exp(coefficients(modeloOptimo))
+
+# Intervalo confianza
+confint(modeloOptimo)
+exp(confint(modeloOptimo))
+```
+
+## Capacidad de predicción de los modelos
+
+Ahora, comprobamos la capacidad de predicción del modelo.
+
+```{r}
+# Plot de los resiudos de la regresión
+plot(residuals(modelo) ~ fitted(modelo),
+     xlab = "Fitted",
+     ylab = "residuos",
+     main = "Fitted vs Residuals. Modelo 3")
+# dibujamos una linea horizontal a la altura 0
+abline(h = 0)
 ```
