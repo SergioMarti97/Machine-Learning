@@ -59,7 +59,7 @@ De esta forma, se pueden seleccionar las variables que no estan altamente correl
 library(caret) # Contiene la función findCorrelation
 
 # Obtener las variables más correlacionadas
-lVarDrop <- findCorrelation(mCor, cutoff = 0.8) # 0.9
+lVarDrop <- findCorrelation(mCor, cutoff = 0.9) # 0.9
 
 # Mostramos las variables altamente correlacionadas:
 sprintf("Número de variables altamente correlacionadas: %d", length(lVarDrop))

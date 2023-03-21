@@ -1,0 +1,85 @@
+---
+title: "Regresión logística"
+author: "Sergio Martí"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Modelo de "*Random Forest*" o bosque aleatorio.
+
+El modelo de "*Random Forest*" o bosque aleatorio es un método que se utiliza para la eliminación recursiva de variables. Una forma de descartar las variables menos importantes.
+
+La eliminación recursiva se realiza a través de la función `rfe()` de la librería `caret`. El funcionamiento es el siguiente: se genera un subconjunto con todas las variables predictoras (numericas y categóricas), y haciendo uso de un clasificador, se evalua la significancia de cada variable, genera otro subconjunto de menor tamaño. Este proceso se repite de forma recursiva para cada conjunto, hasta llegar al tamaño deseado.
+
+En este caso, se requiere construir un modelo de clasificación basado en bosques aleatorios (`rfFuncs`).
+
+Tanto la eliminación recursiva de variables, como la construcción del modelo de bosques aleatorios, tienen un coste computacional elevado. Por lo tanto, se ejecuta una sola vez las funciones requeridas y los resultados obtenidos se guardan como archivos "`.RDS`" para evitar tener que volver a ejecutar las mismas tareas.
+
+```{r}
+# Cargar la librería caret
+library(caret)
+```
+
+Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "`registerDoParallel()``".
+
+```{r}
+# Cargar la librería doParallel
+library(doParallel)
+
+registerDoParallel(cores=4)
+```
+Además, algunas funciones hacen sus calculos a partir de números aleatorios. Para poder asegurar la reproducibilidad de los datos, se va a configurar la semilla a partir de la cual se generan los números pseudo-aleatorios. De esa forma siempre saldrán los mismos resultados.
+
+```{r}
+# Semilla aleatoria
+set.seed(123)
+```
+
+### Datos clínicos
+
+Para trabajar con los datos clínicos, se ha decidido eliminar las variables altamente correlacionadas.
+
+```{r}
+# Cargar los datos
+dfClinical <- readRDS("./dfClinical.RDS")
+dfSelectedVars <- readRDS("./selectedVars.RDS")
+
+# Escalar los datos
+dfVars <- data.frame(scale(dfSelectedVars[,3:ncol(dfSelectedVars)]))
+
+# Añadir la columna del factor
+dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
+```
+
+Además, se va a crear un data frame con menos datos, para poder realizar pruebas.
+
+```{r}
+# Crear un dataframe con datos reducido
+vCols <- sample(1:nrow(dfVars), nrow(dfVars) * 0.10)
+dfSmall <- dfVars[vCols,]
+rm(vCols)
+```
+
+A continuación, se va a definir el modelo de selección mediante bosques aleatorios.
+
+```{r}
+# Modelo de clasificación de bosques aleatorios
+folds = 4
+seeds <- sample.int(1000, folds +1)
+
+ctrl.rfranker.cv.4 <- sbfControl(functions = rfSBF,
+                                method = "cv", number = folds,
+                                seeds = seeds,
+                                verbose = FALSE,
+                                allowParallel = TRUE)
+```
+
+Para seleccionar variables mediante filtros se realiza la siguiente operación:
+
+```{r}
+set.seed(234)
+
+rf.ranker.cv.4 <- sbf(resp.pCR ~ ., data=dfSmall, sbfControl = ctrl.rfranker.cv.4)
+rf.ranker.cv.4
+```
+

@@ -176,7 +176,7 @@ dfClinical <- cbind(
 rm(dfNumVars, dfIntVars, vColsInt, vColIsFactor, dfClinicalVars)
 ```
 
-Para mostrar la información de las variables categóricas, se va a utilizar la función `describe()` del paquete `Hmisc` porque muestra genera una salida más detallada y comprensible.
+Para mostrar la información de las variables categóricas, se va a utilizar la función `describe()` del paquete `Hmisc` porque genera una salida más detallada y comprensible.
 
 ```{r}
 library(Hmisc) # <- función `describe()`

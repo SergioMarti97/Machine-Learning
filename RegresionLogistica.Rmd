@@ -26,7 +26,9 @@ str(dfVars)
 
 ### Test previo
 
-Antes de construir el modelo de regresión logística, se va a proceder a visualizar las variables en función del factor "**resp.pCR**". Además, se va a realizar un contraste de igualdad de medias para dos poblaciones independientes.
+Antes de construir el modelo de regresión logística, se va a proceder a visualizar las variables en función del factor "**resp.pCR**". Además, se va a realizar un contraste de igualdad de medias para dos poblaciones independientes. De esta forma, se puede comprobar si el efecto del factor "**resp.pCR**" produce diferencias significativas en las variables.
+
+Determinar que variables se ven afectadas o no por el efecto del factor puede servir para descartar algunas variables que no sean relevantes para construir el modelo de regresión logística.
 
 ```{r}
 # Aplicar un constraste de igualdad de medias para dos poblaciones independientes.
@@ -51,53 +53,60 @@ lColsAvgAreDiff <- lapply(2:ncol(dfVars), function(i) {
   
   ggplot2::ggplot(dfVars, ggplot2::aes(x = resp.pCR, y = v)) + 
     ggplot2::geom_boxplot(color = ifelse(bAvgAreDiff, "red", "black")) + 
-    ggplot2::stat_summary(fun.y=mean, geom="point", size=2, color="red") + 
+    ggplot2::stat_summary(fun=mean, geom="point", size=2, color="red") + 
     ggplot2::labs(title=paste0(sColName, " según resp.pCR"), x="resp.pCR", y=sColName) + 
     ggplot2::theme_classic()
   
   return(bAvgAreDiff)
 })
 
+# Convertimos la lista a un vector
 vColsAvgAreDiff <- unlist(lColsAvgAreDiff)
 rm(lColsAvgAreDiff)
+
+# Mostramos el número de variables que no presentan diferencias significativas
+sprintf("Número de variables que se ven afectadas por el factor resp.pCR: %d", sum(vColsAvgAreDiff))
+colnames(dfVars[,2:ncol(dfVars)])[!vColsAvgAreDiff]
 ```
 
 ### Primer modelo de regresión logística
 
-Contruir el modelo de regresión logística.
+Contruir el modelo de regresión logística. Este paso se realiza mediante la función `glm()`.
 
 ```{r}
 # Descartar variables que no presentan diferencias significativas
-dfVars <- dfVars[,unlist(vColsAvgAreDiff)]
+dfVars <- dfVars[,vColsAvgAreDiff] # Se puede incluir o no, las variables descartadas no son relevantes
 
 # Construcción del modelo de regresión logistica con todas las variables
-modelo <- glm(resp.pCR ~ ., family = binomial(link="logit"), data = dfVars)
+modeloCompleto <- glm(resp.pCR ~ ., family = binomial(link="logit"), data = dfVars)
 
 # Mostrar los datos del modelo
-summary(modelo)
+summary(modeloCompleto)
 ```
 
-Calcular las odds-ratio.
+Calcular los coeficientes, las odds-ratio, y los intervalos de confianza del modelo.
 
 ```{r}
 # Odds ratio
-coefficients(modelo)
-exp(coefficients(modelo))
+coefficients(modeloCompleto)
+exp(coefficients(modeloCompleto))
 
 # Intervalo confianza
-confint(modelo)
-exp(confint(modelo))
+confint(modeloCompleto)
+exp(confint(modeloCompleto))
 ```
+
+Las variables más significativas en el modelo de regresión logística, por orden, son: "**TIDE.CD8**", "**Danaher.CD8.T.cells**", "**Danaher.Mast.cells**", "**Danaher.Neutrophils**", "**Age.at.diagnosis**" y "**PGR.log2.tpm**".
 
 ### Segundo modelo de regresión logística
 
-Utilizar todas las variables no tiene porque mejorar el modelo. Muchas de ellas introducen error y empeoran su la capacidad predictiva.
+Utilizar todas las variables no tiene porque mejorar el modelo. Muchas de ellas pueden introducir error y empeorar la capacidad predictiva.
 
-Para mejorar el modelo, se pueden reducir el número de variables utilizadas. Se hará uso de la función `stepAIC` para seleccionar las variables significativas. Esta función compara los modelos al ir agregando variables.
+Con el fin de mejorar el modelo, se pueden reducir el número de variables utilizadas. Se hará uso de la función `stepAIC()` de la librería `MASS` para seleccionar las variables significativas. Esta función, crea varios modelos y los compara al ir agregando variables.
 
-Se calcula un estadístico llamado "AIC", que cuantifica la información que se pierde debido a la simplificación. Durante el proceso, se comprueba si el valor AIC crece o decrece. Este valor cuantifica la información que se pierde debido a la simplifación, por ello, es mejor el modelo que tenga el valor más bajo de "AIC".
+Se calcula un estadístico llamado "AIC", que cuantifica la información que se pierde debido a la simplificación. Durante el proceso, se comprueba si el valor AIC crece o decrece. Este valor cuantifica la información que se pierde debido a la simplifación, por ello, es mejor el modelo con el valor más bajo de "AIC".
 
-```{r}
+```{r, results = 'hide'}
 # Cargar la librería MASS
 library(MASS)
 
@@ -105,13 +114,17 @@ library(MASS)
 modeloVacio <- glm(resp.pCR ~ 1, family='binomial', data = dfVars)
 
 # Crear el modelo con las variables optimas
-modeloOptimo <- stepAIC(modeloVacio, scope = list(lower=modeloVacio, upper=modelo), direction = 'both')
+modeloOptimo <- stepAIC(modeloVacio, scope = list(lower=modeloVacio, upper=modeloCompleto), direction = 'both')
+```
 
+Mediante la función `stepAIC()`, se ha construido un modelo de regresión logística con menos variables que el modelo completo. Estas son las variables utilizadas:
+
+```{r}
 # Datos del modelo optimo
 summary(modeloOptimo)
 ```
 
-Mediante la función `stepAIC()`, se ha determinado que el modelo que minimiza el valor de "AIC" es utilizando las variables: "**PGR.log2.tpm**", "**Age.at.diagnosis**", "**TIDE.CD8**", "**Danaher.Mast.cells**", "**CytScore.log2**", "**Danaher.Macrophages**".
+Se ha determinado que el modelo que minimiza el valor de "AIC" es aquel que utiliza las variables: "**PGR.log2.tpm**", "**Age.at.diagnosis**", "**Danaher.Neutrophils**", "**Swanton.MitosisScore**", "**median_lymph_KDE_knn_50**", "**GGI.gsva**", "**TIDE.TAM.M2**". Las dos últimas variables son las menos significativas. Los coeficientes, odds-ratio y intervalos de confianza del modelo son los siguientes:
 
 ```{r}
 # Odds ratio
@@ -123,16 +136,85 @@ confint(modeloOptimo)
 exp(confint(modeloOptimo))
 ```
 
-## Capacidad de predicción de los modelos
+### Validez de los modelos
 
-Ahora, comprobamos la capacidad de predicción del modelo.
+Para comprobar la validez de los modelos, se debe de realizar un test de Hosmer-Lemeshow.
 
 ```{r}
-# Plot de los resiudos de la regresión
-plot(residuals(modelo) ~ fitted(modelo),
-     xlab = "Fitted",
-     ylab = "residuos",
-     main = "Fitted vs Residuals. Modelo 3")
-# dibujamos una linea horizontal a la altura 0
-abline(h = 0)
+library("ResourceSelection")
+
+# Modelo completo
+hoslem.test(dfVars$resp.pCR, fitted(modeloCompleto))
+anova(modeloCompleto, test='Chisq')
+
+# Modelo optimo
+hoslem.test(dfVars$resp.pCR, fitted(modeloOptimo))
+anova(modeloOptimo, test='Chisq')
 ```
+
+## Capacidad de predicción de los modelos
+
+Se debe de comprobar la capacidad de predicción del modelo. La finalidad del modelo es determinar si una paciente, en base a sus variables clínicas, va a responder de forma satisfactoria al tratamiento. La forma de comprobarlo es mediante una curva ROC y la matriz de confusión.
+
+Se han construido dos modelos de regresión logística:
+
+-   **Modelo completo**: modelo con todas las variables clínicas, seleccionadas en base a su correlación para evitar el problema de la colinealidad.
+
+-   **Modelo optimo**: modelo construido con la función `stepAIC()`, para seleccionar solamente las variables más relevantes.
+
+Se va a comprobar la capacidad de predicción de los dos modelos para poder compararlos entre si y seleccionar al mejor.
+
+Primero, se procederá a graficar las curvas ROC de los dos modelos.
+
+```{r}
+library('ROCR')
+library('Epi')
+
+# Curva ROC primer modelo
+plot(performance(prediction(modeloCompleto$fitted.values,dfVars$resp.pCR),'tpr','fpr'),
+colorize=T, main='Curva ROC')
+
+# Curva ROC segundo modelo
+plot(performance(prediction(modeloOptimo$fitted.values,dfVars$resp.pCR),'tpr','fpr'),
+colorize=T, main='Curva ROC')
+```
+
+A continuación, se determinará el punto de corte óptimo y se construirá las matrices de confusión para los dos modelos:
+
+```{r}
+# Modelo completo (todas las variables)
+
+# Curva ROC
+curva <- ROC(form=resp.pCR ~ ., data=dfVars, plot='ROC', PV=T, MX=T, AUC=T)
+
+# Matriz de confusión
+prediccion <- ifelse(modeloCompleto$fitted.values > 0.337, "True", "False")
+
+mConfusion <- table(modeloCompleto$model$resp.pCR, prediccion, dnn=c("observaciones", "predicciones"))
+
+mConfusion
+
+# ----------------------------------------
+
+# Modelo optimo (solo las variables más importantes)
+
+# Curva ROC TODO
+curva <- ROC(form=resp.pCR ~ PGR.log2.tpm + Age.at.diagnosis + TIDE.CD8 + Danaher.Mast.cells + CytScore.log2 + Danaher.Macrophages, data=dfVars, plot='ROC', PV=T, MX=T, AUC=T)
+
+# Matriz de confusión
+prediccion <- ifelse(modeloOptimo$fitted.values > 0.289, "True", "False")
+
+mConfusion <- table(modeloOptimo$model$resp.pCR, prediccion, dnn=c("observaciones", "predicciones"))
+
+mConfusion
+```
+
+Comparando las curvas ROC, el área bajo la curva que acumulan, y las matrices de confusión, el modelo de regresión logística que incluye todas las variables tiene mayor capacidad de predicción que el modelo que incluye menos variables. Ambos modelos presentan buenas metricas y un alto poder de predicción.
+
+-   **Modelo completo**: utiliza 32 variables, sensibilidad del 89,5%; especificidad del 92,7% y el área bajo la curva es de 0,93. Con los datos que se dispone de las pacientes, clasifica erroneamente 14 pacientes. Determina 4 falsos positivos y 10 "positivos falsos" (clasifica como que no responderán al tratamiento pacientes que sí han respondido al tratamiento).
+
+-   **Modelo óptimo**: utiliza 7 variables, sensibilidad del 81,6%; especificidad del 81,7% y el área bajo la curva es de 0,86. En la matriz de confusión, clasifica erroneamene 28 pacientes, 8 como falsos positivos y 20 "positivos falsos".
+
+Es lógico que suceda esto porque menos variables puede implicar un menor poder de predicción porque no se cuenta con la misma información. Sin embargo, el **modelo completo** utiliza 32 variables mientras que el **modelo óptimo** utiliza 7. La diferencia de sensibilidad entre el modelo completo y el modelo óptimo son 8 puntos de sensibilidad y 11 puntos de especificidad. Lo mejor para elegir entre los dos modelos es encontrar un compromiso entre el número de variables a utilizar (ya que no siempre se podrán obtener todas las variables de la paciente) y la especifidad del modelo.
+
+Esta comparación también sirve para comprobar que las variables seleccionadas en el modelo óptimo son las más relevantes a la hora de determinar si la paciente responderá de manera satisfactoria al tratamiento.
