@@ -7,20 +7,22 @@ output: html_document
 
 ## Modelo de "*Random Forest*" o bosque aleatorio.
 
-El modelo de "*Random Forest*" o bosque aleatorio es un método que se utiliza para la eliminación recursiva de variables. Una forma de descartar las variables menos importantes.
+El modelo de "*Random Forest*" o bosque aleatorio es un método de clasificación que se utiliza para la selección de variables. 
 
-La eliminación recursiva se realiza a través de la función `rfe()` de la librería `caret`. El funcionamiento es el siguiente: se genera un subconjunto con todas las variables predictoras (numericas y categóricas), y haciendo uso de un clasificador, se evalua la significancia de cada variable, genera otro subconjunto de menor tamaño. Este proceso se repite de forma recursiva para cada conjunto, hasta llegar al tamaño deseado.
+Respecto a la selección de variables, destacar que existen diferentes métodos. Algunos de estos métodos consisten descartar las variables menos importantes. Ejemplos son la selección de variables basada en filtros y la eliminación recursiva de variables.
+
+La eliminación recursiva se realiza a través de la función `rfe()` de la librería `caret`. El funcionamiento es el siguiente: se genera un subconjunto con todas las variables predictoras (numericas y categóricas), y haciendo uso de un clasificador, se evalua la significancia de cada variable. A continuación, se genera otro subconjunto de menor tamaño con las variables más significativas. Este proceso se repite de forma recursiva para cada conjunto, hasta llegar al tamaño deseado.
 
 En este caso, se requiere construir un modelo de clasificación basado en bosques aleatorios (`rfFuncs`).
 
-Tanto la eliminación recursiva de variables, como la construcción del modelo de bosques aleatorios, tienen un coste computacional elevado. Por lo tanto, se ejecuta una sola vez las funciones requeridas y los resultados obtenidos se guardan como archivos "`.RDS`" para evitar tener que volver a ejecutar las mismas tareas.
+Tanto la eliminación recursiva de variables, como la construcción del modelo de bosques aleatorios, tienen un coste computacional elevado. Por lo tanto, las funciones requeridas se ejecuta una sola vez y los resultados obtenidos se guardan como archivos "`.RDS`"; para evitar tener que volver a ejecutar las mismas tareas.
 
 ```{r}
 # Cargar la librería caret
 library(caret)
 ```
 
-Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "\`registerDoParallel()\`\`".
+Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "`registerDoParallel()`".
 
 ```{r}
 # Cargar la librería doParallel
@@ -61,7 +63,6 @@ dfLogic <- dfClinical[,vColsLogic]
 # Añadir la columna del factor, las variables categóricas y las lógicas
 # dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars, dfFac, dfLogic)
 dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
-
 
 # Reformular la variable resp.pCR porque si no caret da un error
 dfVars$resp.pCR <- factor(dfVars$resp.pCR, levels=c("TRUE", "FALSE"), labels=c("Responde", "No responde"))
@@ -108,6 +109,8 @@ rf.ranker.cv.4
 
 #### Selección recursiva
 
+Para seleccionar variables mediante eliminación recursiva se realiza la siguiente operación:
+
 ```{r}
 #Eliminación recursiva RandomForest:
 subsets <- c(3:40)
@@ -153,6 +156,9 @@ rf.rfe.cv.2$fit$confusion
 
 # Importancia
 rf.rfe.cv.2$fit$importance
+
+
+varImp(ctrl.rf.rfe.cv.2)
 ```
 
 Las variables clínicas más importantes según el modelo de bosques aleatorios son siete:
@@ -170,6 +176,10 @@ Las variables clínicas más importantes según el modelo de bosques aleatorios 
 -   "**Danaher.Mast.cells**":
 
 -   "**Swanton.PaclitaxelScore**":
+
+Destacar que coínciden la mayoría de variables seleccionadas mediante el modelo de regresión lineal y la eliminación recursiva de variables. Por lo tanto, al obtener resultados similares con dos métodos distintos, se puede remarcar la relevancia de estas variables a la hora de determinar si el tratamiento neoadyuvante funcionará o no en las pacientes diagnosticadas con cáncer de mama.
+
+Por último, guardamos los resultados como archivos "`.RDS`" con la función "`saveRDS()`".
 
 ```{r}
 # Guardar los archivos RDS
