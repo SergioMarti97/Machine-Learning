@@ -7,27 +7,33 @@ output: html_document
 
 ## Modelo de "*Random Forest*" o bosque aleatorio.
 
-El modelo de "*Random Forest*" o bosque aleatorio es un método de clasificación que se utiliza para la selección de variables. 
+El modelo de "*Random Forest*" o bosque aleatorio es un método de clasificación que se utiliza para la selección de variables.
 
 Respecto a la selección de variables, destacar que existen diferentes métodos. Algunos de estos métodos consisten descartar las variables menos importantes. Ejemplos son la selección de variables basada en filtros y la eliminación recursiva de variables.
 
-La eliminación recursiva se realiza a través de la función `rfe()` de la librería `caret`. El funcionamiento es el siguiente: se genera un subconjunto con todas las variables predictoras (numericas y categóricas), y haciendo uso de un clasificador, se evalua la significancia de cada variable. A continuación, se genera otro subconjunto de menor tamaño con las variables más significativas. Este proceso se repite de forma recursiva para cada conjunto, hasta llegar al tamaño deseado.
+La eliminación recursiva se realiza a través de la función `rfe()` de la librería `caret` (classification and regression training), la cula se utiliza para problemas complejos de clasificación y regresión.
+
+El funcionamiento es el siguiente: se genera un subconjunto con todas las variables predictoras (numericas y categóricas), y haciendo uso de un clasificador, se evalua la significancia de cada variable. A continuación, se genera otro subconjunto de menor tamaño con las variables más significativas. Este proceso se repite de forma recursiva para cada conjunto, hasta llegar al tamaño deseado.
 
 En este caso, se requiere construir un modelo de clasificación basado en bosques aleatorios (`rfFuncs`).
 
 Tanto la eliminación recursiva de variables, como la construcción del modelo de bosques aleatorios, tienen un coste computacional elevado. Por lo tanto, las funciones requeridas se ejecuta una sola vez y los resultados obtenidos se guardan como archivos "`.RDS`"; para evitar tener que volver a ejecutar las mismas tareas.
 
-```{r}
+```{r, eval=FALSE}
 # Cargar la librería caret
+if (require("caret")) {
+  install.packages("caret", dependencies = c("Depends", "Suggests"))
+}
 library(caret)
 ```
 
 Como se ha explicado, los procesos a ejecutar en esta fase, son computacionalmente costosos. Por ello, se va a utilizar la librería "`doParallel`" que permite ejecutar procesos utilizando varios nucleos del ordenador. En este caso, se han utilizado cuatro nucleos mediante la función "`registerDoParallel()`".
 
-```{r}
+```{r, eval=FALSE}
 # Cargar la librería doParallel
 library(doParallel)
 
+# Indicarle al ordenador que se van a utilizar 4 núcleos del ordenador para todos los procesos
 registerDoParallel(cores=4)
 ```
 
@@ -40,7 +46,7 @@ set.seed(123)
 
 ### Datos clínicos
 
-Para trabajar con los datos clínicos, se ha decidido eliminar las variables altamente correlacionadas.
+Primero, cargamos los datos en el entorno. En pasos anteriores se han asignado correctamente los tipos de las variables de los datos clínicos para que R pueda trabajar con ellas correctamente. Además, sirve para separar las variables según si son numéricas, categóricas o lógicas.
 
 ```{r}
 # Cargar los datos
@@ -59,28 +65,67 @@ vColsLogic <- sapply(dfClinical, is.logical)
 # Obtener las variables categóricas y lógicas
 dfFac <- dfClinical[,vColsFac]
 dfLogic <- dfClinical[,vColsLogic]
+```
 
+#### Preprocesado
+
+Se ha decidido descartar las variables numéricas altamente correlacionadas y con varianza cercana a cero para facilitar el proceso de elaboración de un modelo *random forest*. Las vartiables correlacionadas se eliminan porque aportan la mimsa información que otras variables y las variables con varianza cercana a cero se pueden eliminar porque no aportan información ni sirven para separar los individuos, por lo que no son utilizadas por el clasificador.
+
+Las variables correlacionadas se han eliminado en un paso anterior y se han guardado como un archivo "`.RDS`".
+
+```{r}
+# Obtener los indices de las columnas con varianza cercana a 0
+vColsVarNearZero <- nearZeroVar(dfVars)
+
+# Eliminar las variables con varianza cercana a 0
+if (length(vColsVarNearZero) > 0) {
+  dfVars <- dfVars[,-vColsVarNearZero]
+}
+
+# Elimnamos el vector con los indices de las variables cercanas a 0.
+rm(vColsVarNearZero)
+```
+
+No se han detecado variables númericas con varianza cercana a cero en las variables clínicas.
+
+Ahora podemos construir el dataframe con las variables que se van a utilizar para la construcción del modelo de *random forest*.
+
+```{r}
 # Añadir la columna del factor, las variables categóricas y las lógicas
 # dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars, dfFac, dfLogic)
 dfVars <- cbind(resp.pCR=dfClinical$resp.pCR, dfVars)
-
-# Reformular la variable resp.pCR porque si no caret da un error
-dfVars$resp.pCR <- factor(dfVars$resp.pCR, levels=c("TRUE", "FALSE"), labels=c("Responde", "No responde"))
 
 # Eliminar variables que no se van a utilizar
 rm(vColsFac, vColsLogic, dfFac, dfLogic)
 ```
 
-Además, se va a crear un data frame con menos datos, para poder realizar pruebas.
+Para que `caret` funcione correctamente, la variable que se quiere predecir no puede de ser tipo lógico, sino de tipo factor. En este caso, la variable que se quiere predecir es si el tratamiento neoadyuvante funcionará o no (variable "**resp.pCR**"). Es de tipo lógico. Se va a modificar para que funcione correctamente:
 
 ```{r}
-# Crear un dataframe con datos reducido
-vRows <- sample(1:nrow(dfVars), nrow(dfVars) * 0.10)
-dfSmall <- dfVars[vRows,]
-rm(vRows)
+# Reformular la variable resp.pCR porque si no caret da un error
+dfVars$resp.pCR <- factor(dfVars$resp.pCR, levels=c("TRUE", "FALSE"), labels=c("Si", "No"))
 ```
 
-A continuación, se va a definir el modelo de selección mediante bosques aleatorios.
+Antes de empezar con las tareas de procesamiento, Se ha decidido dividir el conjunto inicial de datos en dos conjuntos: entrenamiento (para crear los clasificadores con 2/3 de los registros) y prueba (para evaluarlos con 1/3 de los registros). Para hacerlo se va a utilizar la función `createDataPartition()` que ofrece `caret`. Si se utilizan todos los datos para realizar el modelo, se corre el riesgo del "*overfitting*", o sobreajuste. Es decir, el modelo se ajusta demasiado al caso concreto de estos datos y no se podría utilizar con otros datos.
+
+```{r}
+# Obtener el vector de índices con los registros que se utilizarán para el entrenamiento
+vTrainRows <- createDataPartition(dfVars$resp.pCR, p = 0.66, list = FALSE, times = 1)
+
+# Dataframe de entrenamiento
+dfTrain <- dfVars[vTrainRows,]
+
+# Dataframe de testeo
+dfTest <- dfVars[-vTrainRows,]
+```
+
+#### Entrenamiento del clasificador
+
+La función `train()` del paquete `caret` se utiliza para construir diferentes modelos. Además, permite evaluar el efecto de los parámetros del modelo en la eficacia del clasificador, elegir el modelo óptimo y estimar la eficacia del modelo con un conjuntio de prueba determinado (en este caso, el dataframe `dfTest`).
+
+Para indicarle a la función `train()`como vamos a realizar el proceso de construcción del modelo, se utiliza la función `trainControl()`. Esta función define un objeto en R con todos los parámetros que se utilizarán para construir el modelo.
+
+Se define el modelo de selección mediante bosques aleatorios. Se indica como método de evaluación "**cv**", que significa "*cross-validated*" o **validación cruzada**. Es decir, la precisión a la hora de clasificar del modelo se calcula mediante validación cruzada. También se índica el número de particions a utilizar (`folds`), en este caso cuatro. El parámetro `returnResamp` con la opción "*final*" sirve para especificar que se quiere devolver toda la información relativa al proceso de resampleado. Con el parámetro `verboseIter` se ha indicado que no muestre por consola la información del proceso de entrenamiento. `allowParallel` se utiliza para que el proceso de entrenamiento utilice varios nucleos del ordenador.
 
 ```{r}
 # Modelo de clasificación de bosques aleatorios
@@ -92,7 +137,97 @@ ctrl.rfranker.cv.4 <- sbfControl(functions = rfSBF,
                                 seeds = seeds,
                                 verbose = FALSE,
                                 allowParallel = TRUE)
+
+# Modelo de clasificación
+randomForest_control_cv_4 <- trainControl(method = "cv", 
+                                          number = folds, 
+                                          seeds = NULL, 
+                                          returnResamp = "final",
+                                          search = "random",
+                                          summaryFunction = twoClassSummary,
+                                          classProbs = TRUE,
+                                          verboseIter=FALSE, 
+                                          allowParallel = TRUE)
 ```
+
+A continuación, se llama a la función `train()` pasandole el objeto que se ha acabado de definir y se inicia el proceso de aprendizaje. Importante destacar que se debe de indicar en el parámetro `method` "**rf**", para que el modelo entrenado este basado en **random forest**.
+
+```{r}
+# Iniciar el proceso de entrenamiento
+randomForest_cv_4 <- caret::train(resp.pCR ~ ., 
+                                  data = dfVars, 
+                                  method = "svmRadial", 
+                                  tuneLength = 10, 
+                                  trControl = randomForest_control_cv_4, 
+                                  metric = "ROC")
+
+print(randomForest_cv_4)
+plot(randomForest_cv_4)
+```
+
+Con la función `varImp()` se puede obtener la importancia de cada una de las variables en el proceso de clasificación.
+
+```{r}
+# Importancia de cada una de las variables
+varImp(randomForest_cv_4)
+```
+
+Las variables más relevantes son: **PGR.log2.tpm**", "**Danaher.Neutrophils**", "**Danaher.Mast.cells**", "**median_lymph_KDE_knn_50**", "**TIDE.TAM.M2**", "**Age.at.diagnosis**", "**Swanton.CeramideScore**" y "**HRD.sum**".
+
+Se puede mostrar de forma gráfica el árbol de decisión con las funciones del paquete `partykiy`. El paquete `rattle` también sirve para mostrar de forma gráfica el árbol construido.
+
+```{r}
+# --- TODO: esto no funciona porque solo sirve para objetos creados con el método "rpart" --- #
+# Cargar el paquete partykit
+library(partykit)
+
+# Gráfico
+plot(as.party(randomForest_cv_4$finalModel))
+
+# Cargar el paquete ratle
+library(rattle)
+
+# Gráfico
+fancyRpartPlot(randomForest_cv_4$finalModel, sub = "")
+```
+
+#### Evaluación del clasificador
+
+Para evaluar la validez del clasificador, se van a utilizar el dataset `dfTest`. Se utiliza la función `predict()` para predecir si el tratamiento neoadyuvante funcionará o no en las pacientes de prueba. Se utiliza el arbol de decisión anterior.
+
+```{r}
+# Predicción en base a los datos de prueba
+randomForest_predict <- predict(randomForest_cv_4, newdata = dfTest)
+
+# Mostramos los datos de la predicción:
+randomForest_predict
+```
+Como la variable que se quiere predecir solo tiene dos posibles valores: "Si" o "No" responde al tratamiento, se va a utilizar una curva ROC para medir la eficacia del clasificador construido.
+
+```{r}
+# Calculo de las probabilidades de pertenencia a cada clase
+randomForest_prob <- predict(randomForest_cv_4, newdata = dfTest, type = "prob")
+
+# Tal vez si cambiamos el método en la función train() otra vez a "rf" de random forest la parte de la curva ROC no se pueda calcular y solamente se pueda obtener la matriz de confusión.
+
+# Cargamos la librería
+library(pROC)
+
+# Creamos la curva ROC
+curvaROC <- roc(dfTest$resp.pCR, randomForest_prob$Si)
+
+# Gráfica de la curva ROC
+plot(curvaROC)
+```
+
+El gráfico de la curva ROC muestra que el modelo es muy bueno como predictor. A continuación, se va a proceder a calcular la matriz de confusión con la función `confusionMatrix()`.
+
+```{r}
+# Matriz de confusión
+mConfusion <- confusionMatrix(randomForest_cv_4, positive = "Si")
+mConfusion
+```
+
 
 #### Selección mediante filtros
 
